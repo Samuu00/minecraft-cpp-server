@@ -35,6 +35,10 @@ public:
         m_vz = vz;
     }
 
+    [[nodiscard]] double getVx() const { return m_vx; }
+    [[nodiscard]] double getVy() const { return m_vy; }
+    [[nodiscard]] double getVz() const { return m_vz; }
+
     [[nodiscard]] bool isMarkedForRemoval() const { return m_markedForRemoval; }
     void markForRemoval() { m_markedForRemoval = true; }
 
@@ -60,12 +64,30 @@ public:
 class ItemEntity : public Entity {
 private:
     uint16_t m_itemId;
+    uint32_t m_pickupDelay{40}; // Ritardo in tick prima che possa essere raccolto (circa 2 sec)
 
 public:
     ItemEntity(int32_t id, World* world, double x, double y, double z, uint16_t itemId)
         : Entity(id, 55, world, x, y, z), m_itemId(itemId) {} // 55 = Item entity in 1.20.4
 
     [[nodiscard]] uint16_t getItemId() const { return m_itemId; }
-
+    [[nodiscard]] uint32_t getPickupDelay() const { return m_pickupDelay; }
+    
     void tick(double deltaTime) override;
+};
+
+class LightningEntity : public Entity {
+public:
+    LightningEntity(int32_t id, World* world, double x, double y, double z)
+        : Entity(id, 60, world, x, y, z) { // 60 = Lightning Bolt in 1.20.4
+        m_onGround = true; // No physics
+    }
+
+    void tick(double deltaTime) override {
+        (void)deltaTime;
+        m_age++;
+        if (m_age > 10) { // Despawn after 10 ticks (0.5s)
+            markForRemoval();
+        }
+    }
 };

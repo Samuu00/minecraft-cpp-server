@@ -204,7 +204,7 @@ namespace mc {
         }
 
         // Spiaggia
-        if (continentalness < 0.05f) return Biome::Beach;
+        if (continentalness < 0.15f) return Biome::Beach;
 
         // Montagne
         if (weirdness > 0.55f) return Biome::Mountains;
@@ -473,15 +473,15 @@ namespace mc {
                     float t2 = (cont + 0.15f) / 0.15f;
                     t2 = std::clamp(t2, 0.0f, 1.0f);
                     baseHeight = 40.0f + t2 * 18.0f;
-                } else if (cont < 0.35f) {
+                } else if (cont < 0.45f) {
                     // Beach/Coast/Plains: 63-72 (pianure ampie e piatte)
-                    float t2 = (cont) / 0.35f;
+                    float t2 = (cont) / 0.45f;
                     t2 = std::clamp(t2, 0.0f, 1.0f);
                     t2 = t2 * t2 * (3.0f - 2.0f * t2); // Smooth
                     baseHeight = 63.0f + t2 * 9.0f;
                 } else if (cont < 0.70f) {
                     // Inland plains/hills: 72-90
-                    float t2 = (cont - 0.35f) / 0.35f;
+                    float t2 = (cont - 0.45f) / 0.25f;
                     t2 = std::clamp(t2, 0.0f, 1.0f);
                     baseHeight = 72.0f + t2 * 18.0f;
                 } else {
@@ -720,16 +720,16 @@ namespace mc {
             if (biome == Biome::SunflowerPlains && h % 15 == 2)
                 setBlock(x, surfaceY + 1, z, SUNFLOWER_L);
             // Alberi rari
-            if (h % 200 == 3)
+            if (h % 500 == 3)
                 placeTree(*this, x, surfaceY, z, OAK_LOG, OAK_LEAVES, 5, 2);
             break;
 
         case Biome::Forest:
             if (h % 4 == 0) setBlock(x, surfaceY + 1, z, SHORT_GRASS);
             if (h % 12 == 1) setBlock(x, surfaceY + 1, z, getRandomFlower(h >> 2));
-            if (h % 25 == 2)
+            if (h % 60 == 2)
                 placeTree(*this, x, surfaceY, z, OAK_LOG, OAK_LEAVES, 4 + (h % 3), 2);
-            else if (h % 30 == 3)
+            else if (h % 80 == 3)
                 placeTree(*this, x, surfaceY, z, BIRCH_LOG, BIRCH_LEAVES, 5 + (h % 2), 2);
             break;
 

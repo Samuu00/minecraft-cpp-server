@@ -47,7 +47,7 @@ class World{
         std::function<void(std::shared_ptr<Entity>)> onEntitySpawned;
         std::function<void(std::shared_ptr<Entity>)> onEntityDestroyed;
         std::function<void(std::shared_ptr<Entity>)> onEntityMoved;
-        std::function<void(int32_t, int32_t)> onItemCollected;
+        std::function<void(int32_t, int32_t, uint16_t)> onItemCollected;
         std::function<void(int64_t, int64_t)> onTimeUpdated;
 
         void tick(double deltaTime);
@@ -63,7 +63,9 @@ class World{
 
         void scheduleFluidUpdate(int x, int y, int z);
 
-        std::shared_ptr<Entity> spawnItem(double x, double y, double z, uint16_t itemId);
+        void spawnEntity(std::shared_ptr<Entity> entity);
+        void spawnItem(double x, double y, double z, uint16_t itemId, double vx = 0, double vy = 0, double vz = 0);
+        void spawnLightning(double x, double y, double z);
         std::shared_ptr<Entity> spawnMob(double x, double y, double z, int32_t typeId);
         [[nodiscard]] const std::vector<std::shared_ptr<Entity>>& getEntities() const { return m_entities; }
 

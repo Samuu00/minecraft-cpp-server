@@ -60,15 +60,15 @@ NetworkServer::NetworkServer(uint16_t port, World* world) : m_port(port), m_worl
         };
 
         m_world->onEntitySpawned = [this](std::shared_ptr<Entity> entity) {
-            mc::SpawnEntityPacket spawnPacket(entity->getId(), entity->getType(), entity->getX(), entity->getY(), entity->getZ());
+            mc::SpawnEntityPacket spawnPacket(entity->getId(), entity->getType(), entity->getX(), entity->getY(), entity->getZ(), entity->getVx(), entity->getVy(), entity->getVz());
             for (auto& client : m_clients) {
                 if (client && client->isConnected() && client->getState() == ProtocolState::Play) {
                     client->sendPacket(spawnPacket);
-                    // Se è un item, invia anche i metadata
-                    if (entity->getType() == 55) {
+                    
+                    if (entity->getType() == 55) { // Item
                         auto itemEntity = std::static_pointer_cast<ItemEntity>(entity);
-                        mc::EntityMetadataPacket metaPacket(entity->getId(), itemEntity->getItemId());
-                        client->sendPacket(metaPacket);
+                        mc::EntityMetadataPacket metadataPacket(entity->getId(), itemEntity->getItemId());
+                        client->sendPacket(metadataPacket);
                     }
                 }
             }
@@ -84,11 +84,37 @@ NetworkServer::NetworkServer(uint16_t port, World* world) : m_port(port), m_worl
             }
         };
 
-        m_world->onItemCollected = [this](int32_t collectedId, int32_t collectorId) {
+        m_world->onItemCollected = [this](int32_t collectedId, int32_t collectorId, uint16_t itemId) {
             mc::CollectItemPacket collectPacket(collectedId, collectorId, 1);
             for (auto& client : m_clients) {
                 if (client && client->isConnected() && client->getState() == ProtocolState::Play) {
                     client->sendPacket(collectPacket);
+                    
+                    // Sincronizza l'inventario per il giocatore che ha raccolto l'oggetto
+                    if (client->getPlayer() && client->getPlayer()->getId() == collectorId) {
+                        int slot = client->getPlayer()->addInventoryItem(itemId, 1);
+                        if (slot != -1) {
+                            auto item = client->getPlayer()->getInventoryItem(slot);
+                            
+                            ByteBuffer slotPayload;
+                            slotPayload.writeByte(0); // Window ID 0 (Player Inventory)
+                            slotPayload.writeVarInt(0); // State ID
+                            slotPayload.writeShort(slot); // Slot trovato
+                            slotPayload.writeBoolean(true); // Present
+                            slotPayload.writeVarInt(item.first); // Item ID
+                            slotPayload.writeByte(item.second); // Count aggiornato
+                            slotPayload.writeByte(0); // NBT (nessuno)
+                            
+                            ByteBuffer finalSlot;
+                            int32_t slotId = 0x15; // Set Container Slot (1.20.4)
+                            int32_t slotLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(slotId) + slotPayload.size());
+                            finalSlot.writeVarInt(slotLen);
+                            finalSlot.writeVarInt(slotId);
+                            finalSlot.writeBytes(slotPayload.vector());
+                            
+                            client->sendRawBytes(finalSlot.vector().data(), finalSlot.vector().size());
+                        }
+                    }
                 }
             }
         };
@@ -274,6 +300,8 @@ void NetworkServer::tick(uint64_t currentTick) {
                     
                     if (client->getPlayer()) {
                         client->getPlayer()->setPosition(0.5, spawnY, 0.5);
+                        // Imposta il client in modalità Creativa internamente per allinearsi col pacchetto JoinGame
+                        client->setCreative(true);
                     }
 
                     mc::PlayerPositionPacket posPacket(0.5, spawnY, 0.5);

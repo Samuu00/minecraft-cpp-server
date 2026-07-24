@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cstdint>
+#include <map>
 
 struct Vector3 {
     double x{0.0};
@@ -47,6 +48,14 @@ public:
     [[nodiscard]] GameMode getGameMode() const { return m_gameMode; }
     void setGameMode(GameMode mode) { m_gameMode = mode; }
 
+    int addInventoryItem(uint16_t itemId, uint8_t count);
+    bool removeInventoryItem(int slot, uint8_t count);
+    std::pair<uint16_t, uint8_t> getInventoryItem(int slot) const;
+    void setInventoryItem(int slot, uint16_t itemId, uint8_t count);
+
+    [[nodiscard]] int getSelectedSlot() const { return m_selectedSlot; }
+    void setSelectedSlot(int slot) { m_selectedSlot = slot; }
+
     [[nodiscard]] bool isOnGround() const { return m_onGround; }
     void setOnGround(bool onGround) { m_onGround = onGround; }
 
@@ -57,6 +66,10 @@ private:
     int m_id;
     std::string m_username;
     std::string m_uuid;
+
+    // Inventario interno (slot -> {itemId, count})
+    std::map<int, std::pair<uint16_t, uint8_t>> m_inventory;
+    int m_selectedSlot{36}; // Hotbar inizia dal 36
 
     // Posizione e Fisica
     Vector3 m_position;

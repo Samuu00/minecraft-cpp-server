@@ -41,8 +41,10 @@ void Entity::tick(double deltaTime) {
 
 void ItemEntity::tick(double deltaTime) {
     Entity::tick(deltaTime);
-
-    // Despawn dopo 5 minuti (6000 tick a 20 TPS)
+    if (m_pickupDelay > 0) {
+        m_pickupDelay--;
+    }
+    // Semplice gravità e attrito per gli oggetti (6000 tick a 20 TPS)
     if (m_age > 6000) {
         markForRemoval();
     }

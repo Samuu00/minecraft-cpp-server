@@ -11,6 +11,8 @@
 #include "protocol/packets/CommandsPacket.hpp"
 #include "protocol/packets/PlayerAbilitiesPacket.hpp"
 #include "protocol/packets/UpdateTagsPacket.hpp"
+#include "protocol/packets/RespawnPacket.hpp"
+#include "protocol/packets/BlockUpdatePacket.hpp"
 #include "core/World.hpp"
 #include "core/Player.hpp"
 #include "utils/Logger.hpp"
@@ -29,22 +31,51 @@ namespace mc {
         // Mappatura base (approssimativa per 1.20.4, dove gli ID degli item possono variare)
         // Se non noto, restituiamo 28 (Dirt)
         switch (blockId) {
-            case 1: return 21; // Stone -> Cobblestone
-            case 2: return 22; // Granite
-            case 4: return 24; // Diorite
-            case 6: return 26; // Andesite
-            case 9: return 28; // Grass Block -> Dirt
-            case 10: return 28; // Dirt
-            case 11: return 29; // Coarse Dirt
-            case 112: return 48; // Sand
-            case 118: return 51; // Gravel
-            case 123: return 41; // Gold Ore
-            case 125: return 40; // Iron Ore
-            case 127: return 39; // Coal Ore
-            case 131: return 52; // Oak Log
-            case 134: return 53; // Spruce Log
-            case 137: return 54; // Birch Log
+            case 1: return 1; // stone
+            case 2: return 2; // granite
+            case 4: return 4; // diorite
+            case 6: return 6; // andesite
+            case 9: return 28; // grass_block drops dirt
+            case 10: return 28; // dirt
+            case 11: return 29; // coarse_dirt
+            case 112: return 57; // sand
+            case 118: return 61; // gravel
+            case 123: return 810; // gold_ore -> raw gold
+            case 125: return 806; // iron_ore -> raw iron
+            case 127: return 799; // coal_ore -> coal
+            case 131: return 131; // oak_log
+            case 134: return 132; // spruce_log
+            case 137: return 133; // birch_log
+            case 2005: return 194; // short_grass
+            case 10756: return 468; // tall_grass (lower)
+            case 10757: return 468; // tall_grass (upper)
+            case 2007: return 198; // dead_bush
+            case 2075: return 217; // dandelion
+            case 2077: return 218; // poppy
             default: return blockId; // Fallback to dropping itself
+        }
+    }
+
+    static uint16_t getBlockFromItem(uint16_t itemId) {
+        switch (itemId) {
+            case 1: return 1; // stone
+            case 2: return 2; // granite
+            case 4: return 4; // diorite
+            case 6: return 6; // andesite
+            case 28: return 10; // dirt
+            case 29: return 11; // coarse_dirt
+            case 57: return 112; // sand
+            case 61: return 118; // gravel
+            case 131: return 131; // oak_log
+            case 132: return 134; // spruce_log
+            case 133: return 137; // birch_log
+            case 194: return 2005; // short_grass
+            case 468: return 10756; // tall_grass
+            case 198: return 2007; // dead_bush
+            case 217: return 2075; // dandelion
+            case 218: return 2077; // poppy
+            case 299: return 4277; // crafting_table
+            default: return itemId;
         }
     }
 
@@ -349,7 +380,13 @@ namespace mc {
                 
                 if (client.getPlayer()) {
                     client.getPlayer()->setPosition(px, py, pz);
-                    if (!onGround) {
+                    
+                    uint16_t currentBlock = client.getWorld() ? client.getWorld()->getBlock(px, py, pz) : 0;
+                    bool inWater = (currentBlock == 80 || currentBlock == 2008 || currentBlock == 12786);
+                    
+                    if (inWater) {
+                        client.setHighestY(py); // Reset highestY in water
+                    } else if (!onGround) {
                         client.setHighestY(std::max(client.getHighestY(), py));
                     } else {
                         double fallDist = client.getHighestY() - py;
@@ -396,7 +433,13 @@ namespace mc {
                 if (client.getPlayer()) {
                     client.getPlayer()->setPosition(px, py, pz);
                     client.getPlayer()->setRotation(yaw, pitch);
-                    if (!onGround) {
+                    
+                    uint16_t currentBlock = client.getWorld() ? client.getWorld()->getBlock(px, py, pz) : 0;
+                    bool inWater = (currentBlock == 80 || currentBlock == 2008 || currentBlock == 12786);
+                    
+                    if (inWater) {
+                        client.setHighestY(py);
+                    } else if (!onGround) {
                         client.setHighestY(std::max(client.getHighestY(), py));
                     } else {
                         double fallDist = client.getHighestY() - py;
@@ -441,11 +484,13 @@ namespace mc {
                 
                 if (command.rfind("gamemode creative", 0) == 0 || command.rfind("gamemode 1", 0) == 0) {
                     client.setCreative(true);
+                    if (client.getPlayer()) client.getPlayer()->setGameMode(GameMode::Creative);
                     GameEventPacket gmPacket(3, 1.0f); // 3 = Change Game Mode, 1 = Creative
                     client.sendPacket(gmPacket);
                     LOG_INFO("Gamemode impostato a Creative per ", client.getIp());
                 } else if (command.rfind("gamemode survival", 0) == 0 || command.rfind("gamemode 0", 0) == 0) {
                     client.setCreative(false);
+                    if (client.getPlayer()) client.getPlayer()->setGameMode(GameMode::Survival);
                     GameEventPacket gmPacket(3, 0.0f); // 3 = Change Game Mode, 0 = Survival
                     client.sendPacket(gmPacket);
                     LOG_INFO("Gamemode impostato a Survival per ", client.getIp());
@@ -475,6 +520,33 @@ namespace mc {
                         client.getWorld()->setTime(timeValue);
                     }
                     LOG_INFO("Tempo impostato a ", arg, " per ", client.getIp());
+                }
+                return;
+            }
+
+            if (packetId == 0x07) { // Client Status
+                int32_t actionId = payload.readVarInt();
+                if (actionId == 0) { // Perform Respawn
+                    LOG_INFO("[", client.getIp(), "] Richiesta respawn ricevuta.");
+                    if (client.getPlayer()) {
+                        client.getPlayer()->setHealth(20.0f); // Ripristina vita
+                        // m_foodLevel è max 20, ma non c'è setFoodLevel, quindi lasciamo che lo aggiorni o lo faremo in futuro
+                    }
+                    
+                    uint8_t gm = client.isCreative() ? 1 : 0;
+                    RespawnPacket respawnPacket(gm);
+                    client.sendPacket(respawnPacket);
+                    
+                    // Invia posizione di spawn
+                    ByteBuffer posPayload;
+                    PlayerPositionPacket pos(0.0, 120.0, 0.0);
+                    pos.write(posPayload);
+                    ByteBuffer finalPos;
+                    int32_t posLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(pos.getId()) + posPayload.size());
+                    finalPos.writeVarInt(posLen);
+                    finalPos.writeVarInt(pos.getId());
+                    finalPos.writeBytes(posPayload.vector());
+                    client.sendRawBytes(finalPos.vector().data(), finalPos.vector().size());
                 }
                 return;
             }
@@ -513,6 +585,68 @@ namespace mc {
                             }
                         }
                     }
+                } else if (!client.isCreative() && status == 0) {
+                    // Controlla instant-break per Survival (erba alta, fiori, etc)
+                    World* world = client.getWorld();
+                    if (world) {
+                        uint16_t oldBlock = world->getBlock(bx, by, bz);
+                        bool isInstant = (oldBlock == 2005 || oldBlock == 10756 || oldBlock == 10757 || oldBlock == 2006 || oldBlock == 2007 || oldBlock == 2008 || (oldBlock >= 2075 && oldBlock <= 2090));
+                        if (isInstant) {
+                            world->setBlock(bx, by, bz, 0); // AIR
+                            // I fiori e l'erba a volte droppano qualcosa, per semplicità droppiamo l'oggetto stesso
+                            uint16_t itemId = getItemFromBlock(oldBlock);
+                            world->spawnItem(bx + 0.5, by + 0.5, bz + 0.5, itemId);
+                        }
+                    }
+                } else if (status == 4 || status == 3) {
+                    // Drop item (4 = un singolo oggetto, 3 = tutto lo stack)
+                    if (client.getPlayer()) {
+                        int slotToDrop = client.getPlayer()->getSelectedSlot(); // Usa lo slot correntemente selezionato
+                        auto item = client.getPlayer()->getInventoryItem(slotToDrop);
+                        if (item.first != 0 && item.second > 0) {
+                            uint8_t countToDrop = (status == 4) ? 1 : item.second;
+                            if (client.getPlayer()->removeInventoryItem(slotToDrop, countToDrop)) {
+                                // Spawna l'oggetto nel mondo davanti al giocatore con velocità
+                                World* world = client.getWorld();
+                                if (world) {
+                                    const auto& pos = client.getPlayer()->getPosition();
+                                    float yaw = client.getPlayer()->getRotation().yaw;
+                                    float pitch = client.getPlayer()->getRotation().pitch;
+                                    // Calcola velocità in base a yaw/pitch (in radianti)
+                                    double radYaw = yaw * 3.14159265359 / 180.0;
+                                    double radPitch = pitch * 3.14159265359 / 180.0;
+                                    double vx = -std::sin(radYaw) * std::cos(radPitch) * 0.3;
+                                    double vy = -std::sin(radPitch) * 0.3 + 0.1;
+                                    double vz = std::cos(radYaw) * std::cos(radPitch) * 0.3;
+                                    
+                                    world->spawnItem(pos.x, pos.y + 1.5, pos.z, item.first, vx, vy, vz);
+                                }
+                                
+                                // Invia aggiornamento inventario al client
+                                auto newItem = client.getPlayer()->getInventoryItem(slotToDrop);
+                                ByteBuffer slotPayload;
+                                slotPayload.writeByte(0); // Player Inventory
+                                slotPayload.writeVarInt(0);
+                                slotPayload.writeShort(slotToDrop);
+                                if (newItem.second > 0) {
+                                    slotPayload.writeBoolean(true);
+                                    slotPayload.writeVarInt(newItem.first);
+                                    slotPayload.writeByte(newItem.second);
+                                    slotPayload.writeByte(0);
+                                } else {
+                                    slotPayload.writeBoolean(false);
+                                }
+                                
+                                ByteBuffer finalSlot;
+                                int32_t slotId = 0x15;
+                                int32_t slotLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(slotId) + slotPayload.size());
+                                finalSlot.writeVarInt(slotLen);
+                                finalSlot.writeVarInt(slotId);
+                                finalSlot.writeBytes(slotPayload.vector());
+                                client.sendRawBytes(finalSlot.vector().data(), finalSlot.vector().size());
+                            }
+                        }
+                    }
                 }
                 
                 AcknowledgeBlockChangePacket ackPacket(sequence);
@@ -520,7 +654,57 @@ namespace mc {
                 return;
             }
 
-            if (packetId == 0x38) { // Use Item On (Block placement)
+            if (packetId == 0x2C) { // Set Carried Item
+                int16_t slot = payload.readShort();
+                if (client.getPlayer()) {
+                    client.getPlayer()->setSelectedSlot(36 + slot);
+                }
+                return;
+            }
+
+            if (packetId == 0x2F) { // Set Creative Slot
+                int16_t slot = payload.readShort();
+                bool present = payload.readBoolean();
+                if (client.getPlayer()) {
+                    if (present) {
+                        int32_t itemId = payload.readVarInt();
+                        int8_t count = payload.readByte();
+                        // NBT tag skip: un tag NBT inizia con un byte ID. Se è 0, è TAG_End (vuoto).
+                        // Se non è 0, dovremmo teoricamente leggere l'intero NBT...
+                        // Per 1.20.4 base, assumiamo no-NBT o saltiamo il byte 0.
+                        if (payload.readableBytes() > 0) {
+                            uint8_t nbtType = payload.readByte();
+                            if (nbtType != 0) {
+                                // Fallback se c'è NBT vero non possiamo gestirlo facilmente qui
+                                // ma per sicurezza lo aggiungiamo all'inventario senza NBT
+                            }
+                        }
+                        
+                        if (slot == -1) {
+                            // Drop item dalla creativa
+                            World* world = client.getWorld();
+                            if (world) {
+                                const auto& pos = client.getPlayer()->getPosition();
+                                float yaw = client.getPlayer()->getRotation().yaw;
+                                float pitch = client.getPlayer()->getRotation().pitch;
+                                double radYaw = yaw * 3.14159265359 / 180.0;
+                                double radPitch = pitch * 3.14159265359 / 180.0;
+                                double vx = -std::sin(radYaw) * std::cos(radPitch) * 0.3;
+                                double vy = -std::sin(radPitch) * 0.3 + 0.1;
+                                double vz = std::cos(radYaw) * std::cos(radPitch) * 0.3;
+                                world->spawnItem(pos.x, pos.y + 1.5, pos.z, static_cast<uint16_t>(itemId), vx, vy, vz);
+                            }
+                        } else {
+                            client.getPlayer()->setInventoryItem(slot, static_cast<uint16_t>(itemId), static_cast<uint8_t>(count));
+                        }
+                    } else {
+                        client.getPlayer()->setInventoryItem(slot, 0, 0);
+                    }
+                }
+                return;
+            }
+
+            if (packetId == 0x35) { // Use Item On (Block placement)
                 int32_t hand = payload.readVarInt(); (void)hand;
                 int64_t location = payload.readLong();
                 int32_t face = payload.readVarInt();
@@ -551,8 +735,25 @@ namespace mc {
 
                 World* world = client.getWorld();
                 if (world) {
-                    uint16_t blockToPlace = 1; // Stone come placeholder
-                    world->setBlock(bx, by, bz, blockToPlace); // Gestisce update e fluidi internamente
+                    uint16_t blockToPlace = 1; // Default stone
+                    bool isEmptyHand = false;
+                    if (client.getPlayer()) {
+                        auto item = client.getPlayer()->getInventoryItem(client.getPlayer()->getSelectedSlot());
+                        if (item.first != 0) {
+                            blockToPlace = getBlockFromItem(item.first);
+                        } else {
+                            isEmptyHand = true;
+                        }
+                    }
+                    if (isEmptyHand) {
+                        world->spawnLightning(bx, by, bz);
+                    } else {
+                        world->setBlock(bx, by, bz, blockToPlace); // Gestisce update e fluidi internamente
+                        
+                        // Invia aggiornamento blocco al client (e volendo anche broadcast agli altri)
+                        BlockUpdatePacket blockUpdate(bx, by, bz, blockToPlace);
+                        client.sendPacket(blockUpdate);
+                    }
                 }
 
                 AcknowledgeBlockChangePacket ackPacket(sequence);
@@ -560,9 +761,42 @@ namespace mc {
                 return;
             }
             
-            if (packetId == 0x35) { // Use Item (Air)
+            if (packetId == 0x36) { // Use Item (Air)
                 int32_t hand = payload.readVarInt(); (void)hand;
                 int32_t sequence = payload.readVarInt();
+                
+                if (client.getPlayer() && client.getWorld()) {
+                    auto item = client.getPlayer()->getInventoryItem(client.getPlayer()->getSelectedSlot());
+                    if (item.first == 0) {
+                        auto pos = client.getPlayer()->getPosition();
+                        float yaw = client.getPlayer()->getRotation().yaw;
+                        float pitch = client.getPlayer()->getRotation().pitch;
+
+                        double radYaw = yaw * 3.14159265359 / 180.0;
+                        double radPitch = pitch * 3.14159265359 / 180.0;
+                        double dirX = -std::sin(radYaw) * std::cos(radPitch);
+                        double dirY = -std::sin(radPitch);
+                        double dirZ = std::cos(radYaw) * std::cos(radPitch);
+
+                        double maxDist = 100.0;
+                        double step = 0.5;
+                        double cx = pos.x, cy = pos.y + 1.62, cz = pos.z;
+                        World* world = client.getWorld();
+                        for (double d = 0; d < maxDist; d += step) {
+                            cx += dirX * step;
+                            cy += dirY * step;
+                            cz += dirZ * step;
+                            uint16_t block = world->getBlock(static_cast<int>(std::floor(cx)), 
+                                                             static_cast<int>(std::floor(cy)), 
+                                                             static_cast<int>(std::floor(cz)));
+                            if (block != 0 && block != 80 && block != 79) {
+                                break;
+                            }
+                        }
+                        world->spawnLightning(cx, cy, cz);
+                    }
+                }
+
                 AcknowledgeBlockChangePacket ackPacket(sequence);
                 client.sendPacket(ackPacket);
                 return;

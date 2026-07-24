@@ -44,15 +44,18 @@ void World::tick(double deltaTime){
                 if (entity->getType() == 55 && !entity->isMarkedForRemoval()) { // 55 = Item
                     for (auto& player : m_players) {
                         if (player) {
-                            double dx = player->getPosition().x - entity->getX();
-                            double dy = player->getPosition().y - entity->getY();
-                            double dz = player->getPosition().z - entity->getZ();
-                            if (dx*dx + dy*dy + dz*dz < 2.25) { // 1.5^2
-                                if (onItemCollected) {
-                                    onItemCollected(entity->getId(), player->getId());
+                            auto itemEntity = std::static_pointer_cast<ItemEntity>(entity);
+                            if (itemEntity->getPickupDelay() == 0) {
+                                double dx = player->getPosition().x - entity->getX();
+                                double dy = player->getPosition().y - entity->getY();
+                                double dz = player->getPosition().z - entity->getZ();
+                                if (dx*dx + dy*dy + dz*dz < 2.25) { // 1.5^2
+                                    if (onItemCollected) {
+                                        onItemCollected(entity->getId(), player->getId(), itemEntity->getItemId());
+                                    }
+                                    entity->markForRemoval();
+                                    break;
                                 }
-                                entity->markForRemoval();
-                                break;
                             }
                         }
                     }
@@ -209,37 +212,30 @@ void World::scheduleFluidUpdate(int x, int y, int z) {
     m_fluidUpdates.push({x, y, z});
 }
 
-std::shared_ptr<Entity> World::spawnMob(double x, double y, double z, int32_t typeId) {
+void World::spawnEntity(std::shared_ptr<Entity> entity) {
     std::lock_guard<std::mutex> lock(m_entityMutex);
+    m_entities.push_back(entity);
+    if (onEntitySpawned) {
+        onEntitySpawned(entity);
+    }
+}
+
+std::shared_ptr<Entity> World::spawnMob(double x, double y, double z, int32_t typeId) {
     int32_t id = m_nextEntityId++;
     auto mob = std::make_shared<MobEntity>(id, typeId, this, x, y, z);
-    
-    m_entities.push_back(mob);
-
-    if (onEntitySpawned) {
-        onEntitySpawned(mob);
-    }
-
+    spawnEntity(mob);
     return mob;
 }
 
-std::shared_ptr<Entity> World::spawnItem(double x, double y, double z, uint16_t itemId) {
-    std::lock_guard<std::mutex> lock(m_entityMutex);
+void World::spawnItem(double x, double y, double z, uint16_t itemId, double vx, double vy, double vz) {
     int32_t id = m_nextEntityId++;
-    auto item = std::make_shared<ItemEntity>(id, this, x, y, z, itemId);
-    
-    // Un po' di spinta verso l'alto e casuale
-    double vx = (rand() % 100 - 50) / 1000.0;
-    double vy = 0.2;
-    double vz = (rand() % 100 - 50) / 1000.0;
-    item->setVelocity(vx, vy, vz);
-
-    m_entities.push_back(item);
-
-    if (onEntitySpawned) {
-        onEntitySpawned(item);
-    }
-
-    return item;
+    auto itemEntity = std::make_shared<ItemEntity>(id, this, x, y, z, itemId);
+    itemEntity->setVelocity(vx, vy, vz);
+    spawnEntity(itemEntity);
 }
 
+void World::spawnLightning(double x, double y, double z) {
+    int32_t id = m_nextEntityId++;
+    auto lightning = std::make_shared<LightningEntity>(id, this, x, y, z);
+    spawnEntity(lightning);
+}
