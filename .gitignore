@@ -1,0 +1,7 @@
+build/
+.cache/
+__pycache__/
+*.log
+.clangd/
+.vscode/
+mc-data-test/node_modules/
