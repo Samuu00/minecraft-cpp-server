@@ -14,6 +14,19 @@ World::~World() = default;
 void World::tick(double deltaTime){
     std::lock_guard<std::mutex> lock(m_worldMutex);
 
+    m_timeAccumulator += deltaTime;
+    int ticksToProcess = 0;
+    while (m_timeAccumulator >= 0.05) {
+        m_timeAccumulator -= 0.05;
+        m_worldAge++;
+        m_timeOfDay = (m_timeOfDay + 1) % 24000;
+        ticksToProcess++;
+    }
+
+    if (ticksToProcess > 0 && (m_worldAge % 20 == 0) && onTimeUpdated) {
+        onTimeUpdated(m_worldAge, m_timeOfDay);
+    }
+
     for(auto& player : m_players){
         if(player) player->tick(deltaTime);
     }
@@ -106,6 +119,10 @@ void World::addPlayer(std::shared_ptr<Player> player){
     std::lock_guard<std::mutex> lock(m_worldMutex);
     m_players.emplace_back(player);
     LOG_INFO("Giocatore aggiunto al mondo. Totale online: ", m_players.size());
+    if (m_players.size() == 1) {
+        spawnMob(5.0, 120.0, 5.0, 70); // Pig
+        spawnMob(-5.0, 120.0, -5.0, 82); // Sheep
+    }
 }
 
 void World::removePlayer(int playerId){
@@ -190,6 +207,20 @@ uint16_t World::getBlock(int x, int y, int z) {
 void World::scheduleFluidUpdate(int x, int y, int z) {
     std::lock_guard<std::mutex> lock(m_fluidMutex);
     m_fluidUpdates.push({x, y, z});
+}
+
+std::shared_ptr<Entity> World::spawnMob(double x, double y, double z, int32_t typeId) {
+    std::lock_guard<std::mutex> lock(m_entityMutex);
+    int32_t id = m_nextEntityId++;
+    auto mob = std::make_shared<MobEntity>(id, typeId, this, x, y, z);
+    
+    m_entities.push_back(mob);
+
+    if (onEntitySpawned) {
+        onEntitySpawned(mob);
+    }
+
+    return mob;
 }
 
 std::shared_ptr<Entity> World::spawnItem(double x, double y, double z, uint16_t itemId) {

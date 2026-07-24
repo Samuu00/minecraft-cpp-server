@@ -2,13 +2,12 @@
 #include "protocol/PacketHandler.hpp"
 #include "../utils/Logger.hpp"
 #include "protocol/ByteBuffer.hpp"
+#include "../core/Player.hpp"
+#include "../core/World.hpp"
 #include "protocol/Packet.hpp"
 
 #include <cstdint>
 #include <utility>
-#include <winerror.h>
-#include <winscard.h>
-#include <winsock.h>
 
 ClientConnection::ClientConnection(Socket socket, std::string ip, uint16_t port, class World* world)
     : m_socket(std::move(socket)), m_ip(std::move(ip)), m_port(port), m_world(world) {
@@ -38,7 +37,7 @@ bool ClientConnection::readIncomingData(){
     if(!m_connected) return false;
 
     uint8_t tempBuffer[4096];
-    int bytesRead = ::recv(m_socket.getHandle(), reinterpret_cast<char*>(tempBuffer), sizeof(tempBuffer), 0);
+    int bytesRead = ::recv(m_socket.getHandle(), reinterpret_cast<char*>(tempBuffer), static_cast<int>(sizeof(tempBuffer)), 0);
 
     if(bytesRead > 0){
         m_rxBuffer.insert(m_rxBuffer.end(), tempBuffer, tempBuffer + bytesRead);
@@ -90,6 +89,9 @@ void ClientConnection::sendRawBytes(const uint8_t* data, size_t length){
 
 void ClientConnection::disconnect(){ 
     if(m_connected){
+        if (m_player && m_world) {
+            m_world->removePlayer(m_player->getId());
+        }
         m_connected = false;
         m_socket.close();
         LOG_INFO("Connessione chiusa per ", m_ip, ":", m_port);

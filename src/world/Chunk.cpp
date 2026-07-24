@@ -474,11 +474,11 @@ namespace mc {
                     t2 = std::clamp(t2, 0.0f, 1.0f);
                     baseHeight = 40.0f + t2 * 18.0f;
                 } else if (cont < 0.35f) {
-                    // Beach/Coast/Plains: 58-72 (pianure ampie e piatte)
+                    // Beach/Coast/Plains: 63-72 (pianure ampie e piatte)
                     float t2 = (cont) / 0.35f;
                     t2 = std::clamp(t2, 0.0f, 1.0f);
                     t2 = t2 * t2 * (3.0f - 2.0f * t2); // Smooth
-                    baseHeight = 58.0f + t2 * 14.0f;
+                    baseHeight = 63.0f + t2 * 9.0f;
                 } else if (cont < 0.70f) {
                     // Inland plains/hills: 72-90
                     float t2 = (cont - 0.35f) / 0.35f;
@@ -727,16 +727,16 @@ namespace mc {
         case Biome::Forest:
             if (h % 4 == 0) setBlock(x, surfaceY + 1, z, SHORT_GRASS);
             if (h % 12 == 1) setBlock(x, surfaceY + 1, z, getRandomFlower(h >> 2));
-            if (h % 8 == 2)
+            if (h % 25 == 2)
                 placeTree(*this, x, surfaceY, z, OAK_LOG, OAK_LEAVES, 4 + (h % 3), 2);
-            else if (h % 12 == 3)
+            else if (h % 30 == 3)
                 placeTree(*this, x, surfaceY, z, BIRCH_LOG, BIRCH_LEAVES, 5 + (h % 2), 2);
             break;
 
         case Biome::BirchForest:
             if (h % 4 == 0) setBlock(x, surfaceY + 1, z, SHORT_GRASS);
             if (h % 15 == 1) setBlock(x, surfaceY + 1, z, LILY_OF_VALLEY);
-            if (h % 7 == 2)
+            if (h % 25 == 2)
                 placeTree(*this, x, surfaceY, z, BIRCH_LOG, BIRCH_LEAVES, 5 + (h % 3), 2);
             break;
 
@@ -744,29 +744,29 @@ namespace mc {
             if (h % 5 == 0) setBlock(x, surfaceY + 1, z, SHORT_GRASS);
             if (h % 20 == 1) setBlock(x, surfaceY + 1, z, RED_MUSHROOM);
             if (h % 25 == 2) setBlock(x, surfaceY + 1, z, BROWN_MUSHROOM);
-            if (h % 5 == 3)
+            if (h % 18 == 3)
                 placeTree(*this, x, surfaceY, z, DARK_OAK_LOG, DARK_OAK_LEAVES, 5 + (h % 2), 3);
             break;
 
         case Biome::FlowerForest:
             if (h % 3 == 0) setBlock(x, surfaceY + 1, z, SHORT_GRASS);
             if (h % 4 == 1) setBlock(x, surfaceY + 1, z, getRandomFlower(h));
-            if (h % 10 == 2)
+            if (h % 30 == 2)
                 placeTree(*this, x, surfaceY, z, OAK_LOG, OAK_LEAVES, 4 + (h % 2), 2);
-            else if (h % 12 == 3)
+            else if (h % 35 == 3)
                 placeTree(*this, x, surfaceY, z, BIRCH_LOG, BIRCH_LEAVES, 5, 2);
             break;
 
         case Biome::Taiga:
             if (h % 4 == 0) setBlock(x, surfaceY + 1, z, FERN);
-            if (h % 6 == 1) placeSpruceTree(*this, x, surfaceY, z);
+            if (h % 22 == 1) placeSpruceTree(*this, x, surfaceY, z);
             if (h % 30 == 2) setBlock(x, surfaceY + 1, z, BROWN_MUSHROOM);
             if (h % 35 == 3) setBlock(x, surfaceY + 1, z, RED_MUSHROOM);
             break;
 
         case Biome::SnowyTaiga:
             if (h % 5 == 0) setBlock(x, surfaceY + 1, z, FERN);
-            if (h % 7 == 1) placeSpruceTree(*this, x, surfaceY, z);
+            if (h % 25 == 1) placeSpruceTree(*this, x, surfaceY, z);
             // Neve sopra il terreno
             if (getBlock(x, surfaceY + 1, z) == AIR)
                 setBlock(x, surfaceY + 1, z, SNOW_LAYER);

@@ -24,6 +24,7 @@ void Player::setRotation(float yaw, float pitch){
 
 void Player::setHealth(float health){
     m_health = std::clamp(health, 0.0f, 20.0f);
+    m_hasHealthChanged = true;
 }
 
 void Player::takeDamage(float amount){
@@ -33,6 +34,8 @@ void Player::takeDamage(float amount){
 
     m_health = std::max(0.0f, m_health - amount);
     m_invulnerabilityTimer = 0.5;
+    m_hasDamageEvent = true;
+    m_hasHealthChanged = true;
 
     LOG_INFO(m_username, " ha subito ", amount, " danni! Salute rimanente: ", m_health);
 

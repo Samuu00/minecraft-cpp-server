@@ -12,6 +12,7 @@
 #include "protocol/packets/PlayerAbilitiesPacket.hpp"
 #include "protocol/packets/UpdateTagsPacket.hpp"
 #include "core/World.hpp"
+#include "core/Player.hpp"
 #include "utils/Logger.hpp"
 
 #include <cstdint>
@@ -23,6 +24,29 @@
 #include <wingdi.h>
 
 namespace mc {
+
+    static uint16_t getItemFromBlock(uint16_t blockId) {
+        // Mappatura base (approssimativa per 1.20.4, dove gli ID degli item possono variare)
+        // Se non noto, restituiamo 28 (Dirt)
+        switch (blockId) {
+            case 1: return 21; // Stone -> Cobblestone
+            case 2: return 22; // Granite
+            case 4: return 24; // Diorite
+            case 6: return 26; // Andesite
+            case 9: return 28; // Grass Block -> Dirt
+            case 10: return 28; // Dirt
+            case 11: return 29; // Coarse Dirt
+            case 112: return 48; // Sand
+            case 118: return 51; // Gravel
+            case 123: return 41; // Gold Ore
+            case 125: return 40; // Iron Ore
+            case 127: return 39; // Coal Ore
+            case 131: return 52; // Oak Log
+            case 134: return 53; // Spruce Log
+            case 137: return 54; // Birch Log
+            default: return blockId; // Fallback to dropping itself
+        }
+    }
 
     bool PacketHandler::processIncomingData(ClientConnection& client, std::vector<uint8_t>& receiveBuffer) {
         ByteBuffer readBuffer(receiveBuffer);
@@ -141,6 +165,11 @@ namespace mc {
             if(packetId == 0x00){
                 std::string username = payload.readString();
                 LOG_INFO("[", client.getIp(), "] Tentativo di login dell'utente: ", username);
+
+                static int nextPlayerId = 1;
+                auto player = std::make_shared<Player>(nextPlayerId++, username, "uuid-placeholder");
+                client.setPlayer(player);
+                if (client.getWorld()) client.getWorld()->addPlayer(player);
 
                 std::vector<uint8_t> uuidBytes(16, 0x00);
                 ByteBuffer loginSuccessPayload;
@@ -277,16 +306,8 @@ namespace mc {
                 client.sendRawBytes(finalAbilities.vector().data(), finalAbilities.vector().size());
 
                 // Synchronize Player Position (0x3E)
-                mc::PlayerPositionPacket posPacket(0.0, 120.0, 0.0, 0.0f, 0.0f);
-                ByteBuffer posPayload;
-                posPacket.write(posPayload);
-                ByteBuffer finalPos;
-                int32_t posId = posPacket.getId();
-                int32_t posLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(posId) + posPayload.size());
-                finalPos.writeVarInt(posLen);
-                finalPos.writeVarInt(posId);
-                finalPos.writeBytes(posPayload.vector());
-                client.sendRawBytes(finalPos.vector().data(), finalPos.vector().size());
+                // RIMOSSO: Il pacchetto viene inviato in NetworkServer.cpp DOPO l'invio dei chunk,
+                // altrimenti il client cade nel vuoto mentre carica il terreno!
 
                 // Accodiamo i chunk intorno allo spawn usando il sistema dinamico
                 client.setCurrentChunk(0, 0);
@@ -319,10 +340,26 @@ namespace mc {
 
             // --- Player Position packets ---
             if (packetId == 0x17) { // Set Player Position
+                if (!client.isInitialChunksSent()) return;
+                
                 double px = payload.readDouble();
                 double py = payload.readDouble();
                 double pz = payload.readDouble();
-                bool onGround = payload.readBoolean(); (void)onGround;
+                bool onGround = payload.readBoolean();
+                
+                if (client.getPlayer()) {
+                    client.getPlayer()->setPosition(px, py, pz);
+                    if (!onGround) {
+                        client.setHighestY(std::max(client.getHighestY(), py));
+                    } else {
+                        double fallDist = client.getHighestY() - py;
+                        if (fallDist > 3.0) {
+                            client.getPlayer()->takeDamage(static_cast<float>(fallDist - 3.0));
+                        }
+                        client.setHighestY(py);
+                    }
+                }
+                
                 client.setPlayerPosition(px, py, pz);
                 
                 int32_t newCX = static_cast<int32_t>(std::floor(px)) >> 4;
@@ -347,12 +384,29 @@ namespace mc {
                 return;
             }
             if (packetId == 0x18) { // Set Player Position And Rotation
+                if (!client.isInitialChunksSent()) return;
+                
                 double px = payload.readDouble();
                 double py = payload.readDouble();
                 double pz = payload.readDouble();
-                float yaw = payload.readFloat(); (void)yaw;
-                float pitch = payload.readFloat(); (void)pitch;
-                bool onGround = payload.readBoolean(); (void)onGround;
+                float yaw = payload.readFloat();
+                float pitch = payload.readFloat();
+                bool onGround = payload.readBoolean();
+                
+                if (client.getPlayer()) {
+                    client.getPlayer()->setPosition(px, py, pz);
+                    client.getPlayer()->setRotation(yaw, pitch);
+                    if (!onGround) {
+                        client.setHighestY(std::max(client.getHighestY(), py));
+                    } else {
+                        double fallDist = client.getHighestY() - py;
+                        if (fallDist > 3.0) {
+                            client.getPlayer()->takeDamage(static_cast<float>(fallDist - 3.0));
+                        }
+                        client.setHighestY(py);
+                    }
+                }
+
                 client.setPlayerPosition(px, py, pz);
                 
                 int32_t newCX = static_cast<int32_t>(std::floor(px)) >> 4;
@@ -386,10 +440,12 @@ namespace mc {
                 LOG_INFO("[", client.getIp(), "] Comando eseguito: /", command);
                 
                 if (command.rfind("gamemode creative", 0) == 0 || command.rfind("gamemode 1", 0) == 0) {
+                    client.setCreative(true);
                     GameEventPacket gmPacket(3, 1.0f); // 3 = Change Game Mode, 1 = Creative
                     client.sendPacket(gmPacket);
                     LOG_INFO("Gamemode impostato a Creative per ", client.getIp());
                 } else if (command.rfind("gamemode survival", 0) == 0 || command.rfind("gamemode 0", 0) == 0) {
+                    client.setCreative(false);
                     GameEventPacket gmPacket(3, 0.0f); // 3 = Change Game Mode, 0 = Survival
                     client.sendPacket(gmPacket);
                     LOG_INFO("Gamemode impostato a Survival per ", client.getIp());
@@ -415,17 +471,9 @@ namespace mc {
                     if (arg == "day") timeValue = 1000;
                     else if (arg == "night") timeValue = 13000;
                     
-                    ByteBuffer timePayload;
-                    timePayload.writeLong(0); // World Age
-                    timePayload.writeLong(timeValue); // Time of day
-                    
-                    ByteBuffer finalTime;
-                    int32_t timeId = 0x62; // Update Time packet ID (1.20.4)
-                    int32_t timeLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(timeId) + timePayload.size());
-                    finalTime.writeVarInt(timeLen);
-                    finalTime.writeVarInt(timeId);
-                    finalTime.writeBytes(timePayload.vector());
-                    client.sendRawBytes(finalTime.vector().data(), finalTime.vector().size());
+                    if (client.getWorld()) {
+                        client.getWorld()->setTime(timeValue);
+                    }
                     LOG_INFO("Tempo impostato a ", arg, " per ", client.getIp());
                 }
                 return;
@@ -452,18 +500,17 @@ namespace mc {
                 if (by >= (1 << 11)) by -= (1 << 12);
                 if (bz >= (1 << 25)) bz -= (1 << 26);
 
-                if (status == 0 || status == 2) { // Started/Finished Digging
-                    // In creative, status=0 = instant break
-                    // In survival, status=2 = finished digging
+                if ((client.isCreative() && status == 0) || (!client.isCreative() && status == 2)) {
                     World* world = client.getWorld();
                     if (world) {
                         uint16_t oldBlock = world->getBlock(bx, by, bz);
-                        world->setBlock(bx, by, bz, 0); // AIR - gestisce update e fluidi internamente
-                        
-                        // Genera un item entity
                         if (oldBlock != 0 && oldBlock != 80 && oldBlock != 79) { 
-                            // In 1.20.4, diamo lo stesso ID per l'item (28 = Dirt per ora come test)
-                            world->spawnItem(bx + 0.5, by + 0.5, bz + 0.5, 28);
+                            world->setBlock(bx, by, bz, 0); // AIR
+                            
+                            if (!client.isCreative()) {
+                                uint16_t itemId = getItemFromBlock(oldBlock);
+                                world->spawnItem(bx + 0.5, by + 0.5, bz + 0.5, itemId);
+                            }
                         }
                     }
                 }

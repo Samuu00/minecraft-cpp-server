@@ -11,12 +11,11 @@
 #include "../protocol/packets/ChunkDataPacket.hpp"
 #include "../protocol/packets/PlayerPositionPacket.hpp" 
 #include "../core/World.hpp"
+#include "../core/Player.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <psdk_inc/_socket_types.h>
-#include <winsock2.h>
 
 NetworkServer::NetworkServer(uint16_t port, World* world) : m_port(port), m_world(world){
     if (!m_listenSocket.create()) {
@@ -99,6 +98,24 @@ NetworkServer::NetworkServer(uint16_t port, World* world) : m_port(port), m_worl
             // Per ora non inviamo la posizione in continuo per gli oggetti per evitare spam
             // ma potremmo inviare Update Entity Position. Lo faremo se l'utente lo richiede.
         }; */
+
+        m_world->onTimeUpdated = [this](int64_t worldAge, int64_t timeOfDay) {
+            ByteBuffer timePayload;
+            timePayload.writeLong(worldAge);
+            timePayload.writeLong(timeOfDay);
+            ByteBuffer finalTime;
+            int32_t timeId = 0x62; // Update Time packet ID (1.20.4)
+            int32_t timeLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(timeId) + timePayload.size());
+            finalTime.writeVarInt(timeLen);
+            finalTime.writeVarInt(timeId);
+            finalTime.writeBytes(timePayload.vector());
+            
+            for (auto& client : m_clients) {
+                if (client && client->isConnected() && client->getState() == ProtocolState::Play) {
+                    client->sendRawBytes(finalTime.vector().data(), finalTime.vector().size());
+                }
+            }
+        };
     }
 }
 
@@ -130,6 +147,56 @@ void NetworkServer::tick(uint64_t currentTick) {
 
     for (auto& client : m_clients) {
         if (client && client->isConnected() && client->getState() == ProtocolState::Play) {
+            
+            auto player = client->getPlayer();
+            if (player) {
+                if (player->popHealthChanged()) {
+                    ByteBuffer healthPayload;
+                    healthPayload.writeFloat(player->getHealth());
+                    healthPayload.writeVarInt(player->getFoodLevel());
+                    healthPayload.writeFloat(5.0f); // Saturation
+                    
+                    ByteBuffer finalHealth;
+                    int32_t healthId = 0x5B; // 1.20.4 Update Health
+                    int32_t healthLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(healthId) + healthPayload.size());
+                    finalHealth.writeVarInt(healthLen);
+                    finalHealth.writeVarInt(healthId);
+                    finalHealth.writeBytes(healthPayload.vector());
+                    client->sendRawBytes(finalHealth.vector().data(), finalHealth.vector().size());
+                }
+
+                if (player->popDamageEvent()) {
+                    // Entity Event (0x1D) - Status 2 (Hurt Animation)
+                    ByteBuffer eventPayload;
+                    eventPayload.writeInt(player->getId());
+                    eventPayload.writeByte(2); 
+                    
+                    ByteBuffer finalEvent;
+                    int32_t eventId = 0x1D; // Entity Status
+                    int32_t eventLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(eventId) + eventPayload.size());
+                    finalEvent.writeVarInt(eventLen);
+                    finalEvent.writeVarInt(eventId);
+                    finalEvent.writeBytes(eventPayload.vector());
+                    client->sendRawBytes(finalEvent.vector().data(), finalEvent.vector().size());
+
+                    // Damage Event (0x19)
+                    ByteBuffer dmgPayload;
+                    dmgPayload.writeVarInt(player->getId());
+                    dmgPayload.writeVarInt(1); // Damage type ID (Generic)
+                    dmgPayload.writeVarInt(0);
+                    dmgPayload.writeVarInt(0);
+                    dmgPayload.writeBoolean(false);
+                    
+                    ByteBuffer finalDmg;
+                    int32_t dmgId = 0x19; 
+                    int32_t dmgLen = static_cast<int32_t>(ByteBuffer::getVarIntSize(dmgId) + dmgPayload.size());
+                    finalDmg.writeVarInt(dmgLen);
+                    finalDmg.writeVarInt(dmgId);
+                    finalDmg.writeBytes(dmgPayload.vector());
+                    client->sendRawBytes(finalDmg.vector().data(), finalDmg.vector().size());
+                }
+            }
+
             // Invio di Keep Alive ogni ~15 secondi (300 ticks a 20 TPS)
             if (currentTick - client->getLastKeepAliveTick() >= 300) {
                 if (client->isKeepAlivePending()) {
@@ -194,7 +261,22 @@ void NetworkServer::tick(uint64_t currentTick) {
                 
                 // Invia Player Position SOLO la prima volta (spawn iniziale)
                 if (!client->isInitialChunksSent()) {
-                    mc::PlayerPositionPacket posPacket(0.0, 120.0, 0.0);
+                    double spawnY = 120.0;
+                    auto spawnChunk = m_world->getChunk(0, 0);
+                    if (spawnChunk && spawnChunk->isReady()) {
+                        for (int y = 120; y > -60; --y) {
+                            if (spawnChunk->getBlock(0, y, 0) != 0) { // 0 = AIR
+                                spawnY = y + 1.0;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (client->getPlayer()) {
+                        client->getPlayer()->setPosition(0.5, spawnY, 0.5);
+                    }
+
+                    mc::PlayerPositionPacket posPacket(0.5, spawnY, 0.5);
                     ByteBuffer posPayload;
                     posPacket.write(posPayload);
                     ByteBuffer finalPosPacket;

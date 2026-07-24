@@ -42,11 +42,16 @@ public:
     void setHealth(float health);
     void takeDamage(float amount);
 
+    [[nodiscard]] int32_t getFoodLevel() const { return m_foodLevel; }
+
     [[nodiscard]] GameMode getGameMode() const { return m_gameMode; }
     void setGameMode(GameMode mode) { m_gameMode = mode; }
 
     [[nodiscard]] bool isOnGround() const { return m_onGround; }
     void setOnGround(bool onGround) { m_onGround = onGround; }
+
+    bool popDamageEvent() { bool ev = m_hasDamageEvent; m_hasDamageEvent = false; return ev; }
+    bool popHealthChanged() { bool ev = m_hasHealthChanged; m_hasHealthChanged = false; return ev; }
 
 private:
     int m_id;
@@ -64,6 +69,9 @@ private:
     int32_t m_foodLevel{20};    // Max 20 (10 cosce)
     GameMode m_gameMode{GameMode::Survival};
 
-    double m_invulnerabilityTimer{0.0};
+    double m_invulnerabilityTimer{3.0};
     double m_regenerationTimer{0.0};
+
+    bool m_hasDamageEvent{false};
+    bool m_hasHealthChanged{true};
 };

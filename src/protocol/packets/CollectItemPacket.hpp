@@ -14,7 +14,7 @@ namespace mc {
         CollectItemPacket(int32_t collectedId, int32_t collectorId, int32_t count)
             : m_collectedEntityId(collectedId), m_collectorEntityId(collectorId), m_pickupItemCount(count) {}
 
-        [[nodiscard]] int32_t getId() const override { return 0x69; } // 1.20.4 Pickup Item
+        [[nodiscard]] int32_t getId() const override { return 0x6C; } // 1.20.4 Pickup Item
         [[nodiscard]] ConnectionState getState() const override { return ConnectionState::Play; }
 
         void write(ByteBuffer& buffer) const override {

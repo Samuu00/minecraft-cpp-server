@@ -16,6 +16,8 @@ enum class ProtocolState{
     Play = 4
 };
 
+class Player;
+
 class ClientConnection{
     private:
         Socket m_socket;
@@ -45,6 +47,10 @@ class ClientConnection{
         double m_playerZ{0.0};
         std::set<std::pair<int32_t, int32_t>> m_loadedChunks;
         bool m_initialChunksSent{false};
+        bool m_isCreative{false};
+
+        std::shared_ptr<Player> m_player;
+        double m_highestY{-1000.0};
 
     public:
         ClientConnection(Socket socket, std::string ip, uint16_t port, class World* world = nullptr);
@@ -104,6 +110,15 @@ class ClientConnection{
         
         [[nodiscard]] bool isInitialChunksSent() const { return m_initialChunksSent; }
         void setInitialChunksSent(bool sent) { m_initialChunksSent = sent; }
+        
+        [[nodiscard]] bool isCreative() const { return m_isCreative; }
+        void setCreative(bool creative) { m_isCreative = creative; }
+
+        [[nodiscard]] std::shared_ptr<Player> getPlayer() const { return m_player; }
+        void setPlayer(std::shared_ptr<Player> p) { m_player = p; }
+
+        double getHighestY() const { return m_highestY; }
+        void setHighestY(double y) { m_highestY = y; }
 
         // Accoda nuovi chunk intorno a una posizione (view distance = raggio)
         void queueChunksAround(int32_t cx, int32_t cz, int radius) {

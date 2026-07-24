@@ -22,6 +22,10 @@ class World{
         mutable std::mutex m_chunkMutex;
         std::unique_ptr<ThreadPool> m_threadPool;
 
+        int64_t m_worldAge{0};
+        int64_t m_timeOfDay{0};
+        double m_timeAccumulator{0.0};
+
         // Code per fisica dei fluidi
         std::queue<std::tuple<int, int, int>> m_fluidUpdates;
         std::mutex m_fluidMutex;
@@ -44,6 +48,7 @@ class World{
         std::function<void(std::shared_ptr<Entity>)> onEntityDestroyed;
         std::function<void(std::shared_ptr<Entity>)> onEntityMoved;
         std::function<void(int32_t, int32_t)> onItemCollected;
+        std::function<void(int64_t, int64_t)> onTimeUpdated;
 
         void tick(double deltaTime);
 
@@ -59,5 +64,10 @@ class World{
         void scheduleFluidUpdate(int x, int y, int z);
 
         std::shared_ptr<Entity> spawnItem(double x, double y, double z, uint16_t itemId);
+        std::shared_ptr<Entity> spawnMob(double x, double y, double z, int32_t typeId);
         [[nodiscard]] const std::vector<std::shared_ptr<Entity>>& getEntities() const { return m_entities; }
+
+        void setTime(int64_t timeOfDay) { m_timeOfDay = timeOfDay; }
+        [[nodiscard]] int64_t getTimeOfDay() const { return m_timeOfDay; }
+        [[nodiscard]] int64_t getWorldAge() const { return m_worldAge; }
 };

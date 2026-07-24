@@ -28,8 +28,9 @@ namespace mc {
             buffer.writeBoolean(true); // Present
             buffer.writeVarInt(m_itemId); // Item ID
             buffer.writeByte(1); // Count
-            // Componenti NBT (1.20.5+ sono componenti, 1.20.4 è NBT. In 1.20.4, un NBT tag vuoto è uno 0)
-            buffer.writeByte(0); // Nessun NBT tag
+            // Componenti NBT (1.20.4 Network NBT: 0x0A come root, poi il contenuto, senza nome)
+            buffer.writeByte(0x0A); // TAG_Compound
+            buffer.writeByte(0x00); // TAG_End (chiude il compound vuoto)
 
             buffer.writeByte(static_cast<int8_t>(255));
         }

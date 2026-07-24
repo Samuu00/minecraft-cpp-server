@@ -1,7 +1,6 @@
 #pragma once
 
 #include "protocol/Packet.hpp"
-#include <string>
 
 namespace mc {
 

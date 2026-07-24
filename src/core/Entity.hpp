@@ -41,6 +41,22 @@ public:
     virtual void tick(double deltaTime);
 };
 
+class MobEntity : public Entity {
+public:
+    MobEntity(int32_t id, int32_t type, World* world, double x, double y, double z)
+        : Entity(id, type, world, x, y, z) {}
+
+    void tick(double deltaTime) override {
+        Entity::tick(deltaTime);
+        if (m_onGround && m_age % 100 == 0) {
+            m_vy = 0.4;
+            uint32_t seed = static_cast<uint32_t>((m_id * 31 + m_age) * 1337);
+            m_vx = (static_cast<int>(seed % 100) - 50) / 500.0;
+            m_vz = (static_cast<int>((seed / 100) % 100) - 50) / 500.0;
+        }
+    }
+};
+
 class ItemEntity : public Entity {
 private:
     uint16_t m_itemId;
